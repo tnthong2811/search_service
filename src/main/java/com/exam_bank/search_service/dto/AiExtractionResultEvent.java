@@ -15,4 +15,7 @@ public class AiExtractionResultEvent {
     private String aiJsonResult;     // Chứa nguyên mảng JSON kết quả
     private Boolean successFlag;      // Đánh dấu thành công hay thất bại
     private String errorMessage;     // Chứa câu báo lỗi (nếu có)
+    private Long uploadRequestId;
+    private Integer pageCount;
+    private Long timestamp;
 }

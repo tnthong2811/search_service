@@ -1,0 +1,59 @@
+{
+    "properties": [
+        {
+            "name": "exam.events.exchange",
+            "type": "java.lang.String",
+            "description": "RabbitMQ exchange for exam-service events consumed by search_service."
+        },
+        {
+            "name": "exam.events.file-uploaded-routing-key",
+            "type": "java.lang.String",
+            "description": "Routing key used by exam_service when publishing uploaded-source events."
+        },
+        {
+            "name": "exam.events.sync-routing-key",
+            "type": "java.lang.String",
+            "description": "Routing key used for exam sync upsert/delete events."
+        },
+        {
+            "name": "search.events.queue",
+            "type": "java.lang.String",
+            "description": "Queue used by AI extraction listener to consume uploaded-source events."
+        },
+        {
+            "name": "search.events.ai-extracted-routing-key",
+            "type": "java.lang.String",
+            "description": "Routing key used by search_service to publish AI extraction results back."
+        },
+        {
+            "name": "search.sync.queue",
+            "type": "java.lang.String",
+            "description": "Queue used by search index synchronization listener."
+        },
+        {
+            "name": "minio.url",
+            "type": "java.lang.String",
+            "description": "MinIO endpoint URL."
+        },
+        {
+            "name": "minio.access-key",
+            "type": "java.lang.String",
+            "description": "MinIO access key."
+        },
+        {
+            "name": "minio.secret-key",
+            "type": "java.lang.String",
+            "description": "MinIO secret key."
+        },
+        {
+            "name": "minio.bucket-name",
+            "type": "java.lang.String",
+            "description": "MinIO bucket for source files."
+        },
+        {
+            "name": "gemini.api.key",
+            "type": "java.lang.String",
+            "description": "Google Gemini API key used for extraction requests."
+        }
+    ]
+}

@@ -15,7 +15,7 @@
 
 ## 🛠 Công nghệ sử dụng (Tech Stack)
 
-* **Framework:** Spring Boot 3.2.4, Java 21
+* **Framework:** Spring Boot 4.0.5, Java 21
 * **Message Broker:** RabbitMQ (Spring AMQP)
 * **Search Engine:** Elasticsearch (Spring Data Elasticsearch)
 * **Object Storage:** MinIO Client (v8.5.10)
@@ -39,7 +39,7 @@
 Service được cấu hình để dễ dàng deploy trên các môi trường khác nhau thông qua biến môi trường. Tham khảo file `application.properties` để biết các giá trị mặc định.
 
 ### System & Server
-* `SERVER_PORT`: Cổng chạy ứng dụng (Mặc định: `8083`)
+* `SERVER_PORT`: Cổng chạy ứng dụng (Mặc định: `8086`)
 
 ### RabbitMQ
 * `RABBITMQ_HOST`: Địa chỉ RabbitMQ (Mặc định: `localhost`)
@@ -85,7 +85,7 @@ Service được cấu hình để dễ dàng deploy trên các môi trường k
     ```
     Hoặc chạy file `SearchServiceApplication.java` trực tiếp trên IDE (IntelliJ/Eclipse).
 
-Ứng dụng sẽ khởi động tại địa chỉ: `http://localhost:8083/api/v1/search`
+Ứng dụng sẽ khởi động tại địa chỉ: `http://localhost:8086/api/v1/search`
 
 ## 📦 API Endpoints
 

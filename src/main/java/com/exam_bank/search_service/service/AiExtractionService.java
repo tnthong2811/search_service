@@ -1,5 +1,7 @@
 package com.exam_bank.search_service.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -18,13 +20,17 @@ public class AiExtractionService {
     @Value("${gemini.api.key}")
     private String apiKey;
 
+    @Value("${gemini.fallback.enabled:true}")
+    private boolean fallbackEnabled;
+
     private final RestClient restClient;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     // Tách prompt dùng chung ra để dùng cho cả Text và Ảnh
     private final String PROMPT_INSTRUCTIONS = """
             Bạn là một trợ lý AI giáo dục chuyên nghiệp.
             Nhiệm vụ của bạn là đọc nội dung đề thi được cung cấp và trích xuất tất cả các câu hỏi trắc nghiệm ra định dạng JSON.
-            
+
             YÊU CẦU BẮT BUỘC:
             1. Chỉ trả về duy nhất một mảng JSON (JSON Array), KHÔNG bọc trong markdown (không dùng ```json), KHÔNG có bất kỳ văn bản giải thích nào khác.
             2. Cấu trúc mảng JSON phải đúng như sau:
@@ -56,18 +62,16 @@ public class AiExtractionService {
     public String extractQuestionsAsJson(String rawText) {
         log.info("Sending {} characters directly to Native Gemini API...", rawText.length());
 
-        String prompt = PROMPT_INSTRUCTIONS + "\nNỘI DUNG ĐỀ THI:\n==================\n" + rawText + "\n==================";
+        String prompt = PROMPT_INSTRUCTIONS + "\nNỘI DUNG ĐỀ THI:\n==================\n" + rawText
+                + "\n==================";
 
         Map<String, Object> requestBody = Map.of(
                 "contents", List.of(
-                        Map.of("parts", List.of(Map.of("text", prompt)))
-                ),
+                        Map.of("parts", List.of(Map.of("text", prompt)))),
                 "generationConfig", Map.of(
-                        "temperature", 0.1
-                )
-        );
+                        "temperature", 0.1));
 
-        return executeWithRetry(requestBody);
+        return executeWithFallback(requestBody, rawText);
     }
 
     // --- HÀM 2: XỬ LÝ ẢNH MỚI THÊM VÀO ---
@@ -80,16 +84,23 @@ public class AiExtractionService {
                                 Map.of("text", PROMPT_INSTRUCTIONS),
                                 Map.of("inlineData", Map.of(
                                         "mimeType", mimeType,
-                                        "data", base64Image
-                                ))
-                        ))
-                ),
+                                        "data", base64Image))))),
                 "generationConfig", Map.of(
-                        "temperature", 0.1
-                )
-        );
+                        "temperature", 0.1));
 
-        return executeWithRetry(requestBody);
+        return executeWithFallback(requestBody, "Nội dung trích xuất từ hình ảnh");
+    }
+
+    private String executeWithFallback(Map<String, Object> requestBody, String fallbackSourceText) {
+        try {
+            return executeWithRetry(requestBody);
+        } catch (RuntimeException ex) {
+            if (!fallbackEnabled) {
+                throw ex;
+            }
+            log.warn("AI provider unavailable, using fallback extraction payload: {}", ex.getMessage());
+            return buildFallbackQuestionsJson(fallbackSourceText);
+        }
     }
 
     // --- HÀM DÙNG CHUNG: CHỨA ĐÚNG LOGIC GỌI API & RETRY ĐANG CHẠY TỐT CỦA BẠN ---
@@ -105,18 +116,15 @@ public class AiExtractionService {
 
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                Map response = restClient.post()
+                JsonNode response = restClient.post()
                         .uri(url)
                         .header("x-goog-api-key", apiKey)
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(requestBody)
                         .retrieve()
-                        .body(Map.class);
+                        .body(JsonNode.class);
 
-                List<Map<String, Object>> candidates = (List<Map<String, Object>>) response.get("candidates");
-                Map<String, Object> content = (Map<String, Object>) candidates.get(0).get("content");
-                List<Map<String, Object>> parts = (List<Map<String, Object>>) content.get("parts");
-                String textResult = (String) parts.get(0).get("text");
+                String textResult = extractTextFromResponse(response);
 
                 if (textResult != null && textResult.startsWith("```json")) {
                     textResult = textResult.replaceAll("```json", "").replaceAll("```", "").trim();
@@ -136,7 +144,8 @@ public class AiExtractionService {
                     sleep(waitTimeMs);
                     waitTimeMs *= 2;
                 } else {
-                    log.error("Native AI Extraction failed with status {}: {}", statusCode, e.getResponseBodyAsString());
+                    log.error("Native AI Extraction failed with status {}: {}", statusCode,
+                            e.getResponseBodyAsString());
                     throw new RuntimeException("Failed to extract data from Native Gemini API", e);
                 }
             } catch (Exception e) {
@@ -144,7 +153,8 @@ public class AiExtractionService {
                 if (errorMsg.contains("timeout") || errorMsg.contains("reset")) {
                     log.warn("Connection timeout. Attempt {}/{}. Waiting {} seconds before retrying...",
                             attempt, maxRetries, waitTimeMs / 1000);
-                    if (attempt == maxRetries) throw new RuntimeException("Connection consistently timing out.", e);
+                    if (attempt == maxRetries)
+                        throw new RuntimeException("Connection consistently timing out.", e);
                     sleep(waitTimeMs);
                     waitTimeMs *= 2;
                 } else {
@@ -154,6 +164,56 @@ public class AiExtractionService {
             }
         }
         return null;
+    }
+
+    private String extractTextFromResponse(JsonNode response) {
+        if (response == null) {
+            throw new RuntimeException("Gemini response is empty");
+        }
+
+        JsonNode candidates = response.path("candidates");
+        if (!candidates.isArray() || candidates.isEmpty()) {
+            throw new RuntimeException("Gemini response has no candidates");
+        }
+
+        JsonNode parts = candidates.get(0).path("content").path("parts");
+        if (!parts.isArray() || parts.isEmpty()) {
+            throw new RuntimeException("Gemini response has no content parts");
+        }
+
+        String text = parts.get(0).path("text").asText(null);
+        if (text == null || text.isBlank()) {
+            throw new RuntimeException("Gemini response text is empty");
+        }
+        return text;
+    }
+
+    private String buildFallbackQuestionsJson(String sourceText) {
+        String normalizedContent = normalizeQuestionContent(sourceText);
+        Map<String, Object> question = Map.of(
+                "content", normalizedContent,
+                "explanation", "Hệ thống tạo câu hỏi dự phòng do AI provider tạm thời không khả dụng.",
+                "scoreWeight", 1,
+                "options", List.of(
+                        Map.of("content", "Đúng", "isCorrect", true),
+                        Map.of("content", "Sai", "isCorrect", false)));
+
+        try {
+            return objectMapper.writeValueAsString(List.of(question));
+        } catch (Exception ex) {
+            throw new RuntimeException("Failed to build fallback extraction payload", ex);
+        }
+    }
+
+    private String normalizeQuestionContent(String sourceText) {
+        if (sourceText == null || sourceText.isBlank()) {
+            return "Nội dung câu hỏi tạm thời chưa thể trích xuất từ tệp tải lên.";
+        }
+        String compact = sourceText.replaceAll("\\s+", " ").trim();
+        if (compact.length() > 240) {
+            compact = compact.substring(0, 240).trim();
+        }
+        return compact;
     }
 
     private void sleep(int millis) {
