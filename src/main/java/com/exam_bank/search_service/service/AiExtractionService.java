@@ -1,7 +1,5 @@
 package com.exam_bank.search_service.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -9,6 +7,8 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
 import java.util.Map;
@@ -116,15 +116,15 @@ public class AiExtractionService {
 
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                JsonNode response = restClient.post()
+                String responseBody = restClient.post()
                         .uri(url)
                         .header("x-goog-api-key", apiKey)
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(requestBody)
                         .retrieve()
-                        .body(JsonNode.class);
+                        .body(String.class);
 
-                String textResult = extractTextFromResponse(response);
+                String textResult = extractTextFromResponseBody(responseBody);
 
                 if (textResult != null && textResult.startsWith("```json")) {
                     textResult = textResult.replaceAll("```json", "").replaceAll("```", "").trim();
@@ -164,6 +164,20 @@ public class AiExtractionService {
             }
         }
         return null;
+    }
+
+    String extractTextFromResponseBody(String responseBody) {
+        if (responseBody == null || responseBody.isBlank()) {
+            throw new RuntimeException("Gemini response body is empty");
+        }
+        try {
+            JsonNode response = objectMapper.readTree(responseBody);
+            return extractTextFromResponse(response);
+        } catch (RuntimeException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new RuntimeException("Failed to parse Gemini response body", ex);
+        }
     }
 
     private String extractTextFromResponse(JsonNode response) {
