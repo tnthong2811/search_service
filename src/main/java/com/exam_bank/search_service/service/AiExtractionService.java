@@ -2,6 +2,8 @@ package com.exam_bank.search_service.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.ResourceLoader;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
@@ -10,6 +12,9 @@ import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -26,29 +31,13 @@ public class AiExtractionService {
     private final RestClient restClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    // Tách prompt dùng chung ra để dùng cho cả Text và Ảnh
-    private final String PROMPT_INSTRUCTIONS = """
-            Bạn là một trợ lý AI giáo dục chuyên nghiệp.
-            Nhiệm vụ của bạn là đọc nội dung đề thi được cung cấp và trích xuất tất cả các câu hỏi trắc nghiệm ra định dạng JSON.
+    // Prompt is loaded from classpath resource so it can be managed outside of
+    // source code.
+    private final String PROMPT_INSTRUCTIONS;
+    private static final String PROMPT_RESOURCE = "classpath:ai/extraction-prompt.txt";
+    private static final String PROMPT_FALLBACK = "You are a professional educational AI assistant. Extract MCQs into a JSON array or return [] when none are extractable.";
 
-            YÊU CẦU BẮT BUỘC:
-            1. Chỉ trả về duy nhất một mảng JSON (JSON Array), KHÔNG bọc trong markdown (không dùng ```json), KHÔNG có bất kỳ văn bản giải thích nào khác.
-            2. Cấu trúc mảng JSON phải đúng như sau:
-            [
-              {
-                "content": "Nội dung câu hỏi",
-                "explanation": "Giải thích chi tiết (nếu không có thì để trống)",
-                "scoreWeight": 1,
-                "options": [
-                  { "content": "Nội dung đáp án A", "isCorrect": false },
-                  { "content": "Nội dung đáp án B", "isCorrect": true }
-                ]
-              }
-            ]
-            3. Nếu có ký tự lỗi font, hãy cố gắng dịch và suy luận nó sang tiếng Việt chuẩn. Bắt buộc phải tìm mọi cách bóc tách ra ít nhất 1 câu hỏi, không được phép trả về mảng rỗng [].
-            """;
-
-    public AiExtractionService() {
+    public AiExtractionService(ResourceLoader resourceLoader) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(15000);
         factory.setReadTimeout(180000);
@@ -56,6 +45,21 @@ public class AiExtractionService {
         this.restClient = RestClient.builder()
                 .requestFactory(factory)
                 .build();
+
+        String loaded = null;
+        try {
+            Resource res = resourceLoader.getResource(PROMPT_RESOURCE);
+            if (res != null && res.exists()) {
+                try (InputStream in = res.getInputStream()) {
+                    loaded = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                }
+            } else {
+                log.warn("Prompt resource '{}' not found on classpath; using fallback prompt.", PROMPT_RESOURCE);
+            }
+        } catch (IOException ioe) {
+            log.warn("Failed to read prompt resource; using fallback prompt.", ioe);
+        }
+        this.PROMPT_INSTRUCTIONS = loaded != null ? loaded : PROMPT_FALLBACK;
     }
 
     // --- HÀM 1: XỬ LÝ TEXT (Giữ nguyên luồng cũ của bạn) ---
