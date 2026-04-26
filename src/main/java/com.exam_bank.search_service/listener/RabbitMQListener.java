@@ -18,7 +18,7 @@ public class RabbitMQListener {
     // CHÚ Ý: Đổi tên queue thành queue mới
     @RabbitListener(queues = "${search.sync.queue:search.sync.queue}")
     public void handleExamSync(ExamSyncEvent event) {
-        log.info("Received ExamSyncEvent cho Exam ID: {} với Action: {}", event.getId(), event.getAction());
+        log.info("TRẠM 4 - Đã nhận được Event từ RabbitMQ. Exam ID: {}, Tags: {}", event.getId(), event.getTags());
 
         try {
             if ("DELETE".equalsIgnoreCase(event.getAction())) {
