@@ -2,6 +2,7 @@ package com.exam_bank.search_service.service;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.DefaultResourceLoader;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -9,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @DisplayName("AiExtractionService response parsing")
 class AiExtractionServiceTest {
 
-  private final AiExtractionService service = new AiExtractionService(null);
+  private final AiExtractionService service = new AiExtractionService(new DefaultResourceLoader());
 
   @Test
   void extractTextFromResponseBody_whenValidGeminiPayload_thenReturnFirstTextPart() {
